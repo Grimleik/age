@@ -1,0 +1,25 @@
+{
+    "cmake.sourceDirectory": "${workspaceFolder}/code",
+    "files.associations": {
+        "system_error": "cpp",
+        "xlocale": "cpp",
+        "xiosbase": "cpp",
+        "filesystem": "cpp",
+        "cstdlib": "cpp",
+        "sstream": "cpp",
+        "algorithm": "cpp",
+        "memory": "cpp",
+        "limits": "cpp",
+        "utility": "cpp",
+        "xutility": "cpp",
+        "stack": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "queue": "cpp",
+        "vector": "cpp",
+        "iterator": "cpp",
+        "ranges": "cpp",
+        "xlocnum": "cpp",
+        "xstring": "cpp"
+    }
+}
