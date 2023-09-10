@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stddef.h>
 
 /*==============================TYPES==============================*/
 
@@ -55,6 +56,69 @@ typedef size_t MemoryMarker;
 #define Assert(x)
 
 #endif
+
+typedef struct v2f {
+    union {
+        struct {
+            f32 x, y;
+        };
+        f32 e[2];
+    };
+} v2f;
+
+typedef struct v4f {
+    union {
+        struct {
+            f32 x, y, z, w;
+        };
+        struct {
+            f32 r, g, b, a;
+        };
+        f32 e[4];
+    };
+} v4f;
+
+inline v4f v4f_adds(const v4f a, f32 s) {
+    return (v4f){a.x + s, a.y + s, a.z + s, a.w + s};
+}
+
+inline v4f v4f_add(const v4f a, v4f b) {
+    return (v4f){a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w};
+}
+
+inline v4f v4f_mul(const v4f a, const f32 s) {
+    return (v4f){a.x * s, a.y * s, a.z * s, a.w * s};
+}
+
+inline v4f v4f_lerp(const v4f a, const v4f b, const f32 t) {
+    // res = (1 - t) * a + b * t
+    return v4f_add(v4f_mul(a, (1 - t)), v4f_mul(b, t));
+}
+
+#define ageCOLOR_RED \
+    (v4f) { 1.0f, 0.0f, 0.0f, 1.0f }
+#define ageCOLOR_GREEN \
+    (v4f) { 0.0f, 1.0f, 0.0f, 1.0f }
+#define ageCOLOR_BLACK \
+    (v4f) { 0.0f }
+#define ageCOLOR_BLUE \
+    (v4f) { 0.0f, 0.0f, 1.0f, 1.0f }
+
+inline u32 ConvertToPackedU32(const v4f vf) {
+#if 1
+    u32 r = (u32)(255.0f * vf.r);
+    u32 g = (u32)(255.0f * vf.g);
+    u32 b = (u32)(255.0f * vf.b);
+    u32 a = (u32)(255.0f * vf.a);
+    return a << 24 | r << 16 | g << 8 | b;
+#else
+    return ((u32)((u32)(255.0f * vf.a) << 24 |
+                  (u32)(255.0f * vf.r) << 16 |
+                  (u32)(255.0f * vf.g) << 8 |
+                  (u32)(255.0f * vf.b)));
+#endif
+}
+
 inline f64 MaxF64(f64 a, f64 b) {
     return a > b ? a : b;
 }
@@ -75,13 +139,9 @@ inline s32 MinS32(s32 a, s32 b) {
     return a < b ? a : b;
 }
 
-#define Max(X, Y) _Generic((X), \
-    f32: MaxF32,                \
-    s32: MaxS32)((X), (Y))
-
-#define Min(X, Y) _Generic((X), \
-    f32: MinF32,                \
-    s32: MinS32)(X, Y)
+inline s32 ContainS32(s32 val, s32 minVal, s32 maxVal) {
+    return MaxS32(MinS32(val, maxVal), minVal);
+}
 
 inline f32 ContainF32(f32 val, f32 minVal, f32 maxVal) {
     return MaxF32(MinF32(val, maxVal), minVal);
@@ -114,12 +174,40 @@ inline f32 RandomF32(f32 min, f32 max) {
     return min + (Random01() * (max - min));
 }
 
+typedef enum RC_TYPE {
+    rcClearColor,
+    rcLine,
+} RC_TYPE;
+
+typedef struct renderCommand_t {
+    RC_TYPE type;
+} renderCommand_t;
+
+typedef struct rcClearColor_t {
+    renderCommand_t base;
+    v4f             color;
+} rcClearColor_t;
+
+typedef struct rcLine_t {
+    renderCommand_t base;
+    v2f             p0;
+    v2f             p1;
+    v4f             col0;
+    v4f             col1;
+} rcLine_t;
+
 typedef struct renderList_t {
-    u32 windowWidth;
-    u32 windowHeight;
-    f32 aspectRatio;
-    f32 metersToPixels;
+    u32    windowWidth;
+    u32    windowHeight;
+    f32    aspectRatio;
+    f32    metersToPixels;
+    void  *renderMemory;
+    size_t renderMemoryMaxSz;
+    size_t renderMemoryCurrSz;
 } renderList_t;
+
+void *PushRenderCommand_(renderList_t *rl, RC_TYPE type, size_t sz);
+#define PushRenderCommand(rl, TYPE) PushRenderCommand_(rl, TYPE, sizeof(TYPE##_t))
 
 typedef enum FRAME {
     FRAME_CURRENT = 0,

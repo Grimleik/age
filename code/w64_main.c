@@ -4,9 +4,11 @@
 #include "age.h"
 
 #include <Windows.h>
+#include <dwmapi.h>
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "Dwmapi.lib")
 
 typedef struct gameCode_t {
     HMODULE         gameCodeDLL;
@@ -18,7 +20,22 @@ typedef struct gameCode_t {
     FILETIME        lastDLLWriteTime;
 } gameCode_t;
 
-typedef struct win32State_t {
+typedef struct w64_drawbuffer_t {
+    void *memory;
+    s32   width;
+    s32   height;
+    u32   pitch;
+    u32   bytesPerPixel;
+} w64_drawbuffer_t;
+
+typedef struct w64_rendering_t {
+    HDC              deviceContext;
+    w64_drawbuffer_t backBuffer;
+    BITMAPINFO       backBufferInfo;
+    b32              vsync;
+} w64_rendering_t;
+
+typedef struct w64_state_t {
     gameCode_t gameCode;
     char      *sourceDLL;
     char      *targetDLL;
@@ -26,7 +43,7 @@ typedef struct win32State_t {
     s32        windowWidth;
     s32        windowHeight;
     HWND       hwnd;
-} win32State_t;
+} w64_state_t;
 
 void CopyStrings(char *source, char *dest, size_t size) {
     for (int i = 0; i < size; ++i)
@@ -121,7 +138,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-void WindowsInitGameCode(char *sourceDLL, char *targetDLL, char *pdbFile, win32State_t *state) {
+void WindowsInitGameCode(char *sourceDLL, char *targetDLL, char *pdbFile, w64_state_t *state) {
     char exeFileName[MAX_PATH];
     /*DWORD sizeOfFilename = */ GetModuleFileNameA(0, exeFileName, sizeof(exeFileName));
     char *onePastLastSlash = exeFileName;
@@ -156,10 +173,10 @@ void WindowsInitGameCode(char *sourceDLL, char *targetDLL, char *pdbFile, win32S
     CopyStrings(pdbLockFileFullPath, state->pdbLockFile, pdbSize);
 }
 
-win32State_t WindowsInit(u32 wWidth, u32 wHeight, const char *appName) {
-    win32State_t result = {0};
-    WNDCLASSEX   wc = {0};
-    HINSTANCE    hinstance = GetModuleHandle(NULL);
+w64_state_t WindowsInit(u32 wWidth, u32 wHeight, const char *appName) {
+    w64_state_t result = {0};
+    WNDCLASSEX  wc = {0};
+    HINSTANCE   hinstance = GetModuleHandle(NULL);
 
     wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     wc.lpfnWndProc = WindowProc;
@@ -230,11 +247,128 @@ void ProcessWindowsMessageQueue(platformState_t *state) {
     }
 }
 
+/*==============================RENDERING==============================*/
+
+static void DrawBufferClear(w64_drawbuffer_t *buffer, v4f color) {
+
+    u32 packedColor = ConvertToPackedU32(color);
+
+    if ((packedColor << 8) == 0)
+        memset(buffer->memory, 0, buffer->width * buffer->height * buffer->bytesPerPixel);
+
+    else {
+        u32 *p = (u32 *)buffer->memory;
+        for (int i = 0; i < buffer->width * buffer->height; ++i)
+            *p++ = packedColor;
+    }
+}
+
+static void DrawBufferLine(w64_drawbuffer_t *buffer, s32 x0, s32 y0, s32 x1, s32 y1,
+                           v4f color0, v4f color1) {
+    // Clamp into buffer: "clipping ?"
+    x0 = ContainS32(x0, 0, buffer->width);
+    y0 = ContainS32(y0, 0, buffer->height);
+    x1 = ContainS32(x1, 0, buffer->width);
+    y1 = ContainS32(y1, 0, buffer->height);
+
+    s32 xMin = MinS32(x0, x1);
+    s32 xMax = MaxS32(x0, x1);
+
+    s32 yMin = MinS32(y0, y1);
+    s32 yMax = MaxS32(y0, y1);
+
+    s32 steps = MaxS32((yMax - yMin), (xMax - xMin));
+    if (steps > 0) {
+        f32 dx = (x1 - x0) / (f32)steps;
+        f32 dy = (y1 - y0) / (f32)steps;
+        f32 stepSize = 1.0f / steps;
+        for (s32 step = 0; step < steps; ++step) {
+            s32 x = ContainS32((s32)(x0 + (dx * step)), 0, buffer->width);
+            s32 y = ContainS32((s32)(y0 + (dy * step)), 0, buffer->height);
+
+            u32 *p = (u32 *)buffer->memory + ((y * buffer->width) + x);
+            v4f  lerpC = v4f_lerp(color0, color1, stepSize * step);
+            u32  packedColor = ConvertToPackedU32(lerpC);
+            *p = packedColor;
+        }
+    }
+}
+
+static w64_rendering_t RenderingInit(w64_state_t *handle) {
+
+    w64_rendering_t result = {0};
+    result.backBuffer.width = handle->windowWidth;
+    result.backBuffer.height = handle->windowHeight;
+    result.backBuffer.bytesPerPixel = 4;
+    result.backBuffer.pitch = result.backBuffer.width * result.backBuffer.bytesPerPixel;
+    result.backBuffer.memory = malloc(result.backBuffer.width * result.backBuffer.height * result.backBuffer.bytesPerPixel);
+
+    result.backBufferInfo.bmiHeader.biSize = sizeof(result.backBufferInfo.bmiHeader);
+    result.backBufferInfo.bmiHeader.biWidth = result.backBuffer.width;
+    result.backBufferInfo.bmiHeader.biHeight = -(s32)(result.backBuffer.height);
+    result.backBufferInfo.bmiHeader.biPlanes = 1;
+    result.backBufferInfo.bmiHeader.biBitCount = (WORD)(result.backBuffer.bytesPerPixel * 8);
+    result.backBufferInfo.bmiHeader.biCompression = BI_RGB;
+
+    result.deviceContext = GetDC(handle->hwnd);
+
+    return result;
+}
+
+static void RenderingFrame(renderList_t *rl, w64_drawbuffer_t *backBuffer) {
+
+    u8 *base = (u8 *)rl->renderMemory;
+    u8 *end = (u8 *)rl->renderMemory + rl->renderMemoryCurrSz;
+    for (; base != end;) {
+
+        renderCommand_t *rc = (renderCommand_t *)base;
+        size_t           rc_size = sizeof(renderCommand_t);
+        switch (rc->type) {
+
+        case rcClearColor: {
+            rcClearColor_t *cmd = (rcClearColor_t *)base;
+            DrawBufferClear(backBuffer, cmd->color);
+            rc_size = sizeof(rcClearColor_t);
+        } break;
+
+        case rcLine: {
+            rcLine_t *cmd = (rcLine_t *)base;
+            s32       x0 = (s32)(cmd->p0.x * rl->metersToPixels);
+            s32       y0 = (s32)(cmd->p0.y * rl->metersToPixels);
+            s32       x1 = (s32)(cmd->p1.x * rl->metersToPixels);
+            s32       y1 = (s32)(cmd->p1.y * rl->metersToPixels);
+            // flip y.
+            y0 = rl->windowHeight - y0;
+            y1 = rl->windowHeight - y1;
+            DrawBufferLine(backBuffer, x0, y0, x1, y1, cmd->col0, cmd->col1);
+            rc_size = sizeof(rcLine_t);
+        } break;
+
+        default:
+            break;
+        }
+
+        base = ((u8 *)base) + rc_size;
+    }
+}
+
+static void RenderingFlip(w64_rendering_t *rs) {
+    StretchDIBits(rs->deviceContext, 0, 0,
+                  rs->backBuffer.width, rs->backBuffer.height,
+                  0, 0, rs->backBuffer.width, rs->backBuffer.height,
+                  rs->backBuffer.memory, &rs->backBufferInfo,
+                  DIB_RGB_COLORS, SRCCOPY);
+
+    if (rs->vsync) {
+        Assert(DwmFlush() == S_OK);
+    }
+}
+
 int main(int argc, char **argv) {
-    // NOTE(pf): Explicit use of memory in app done here. All other allocations are forbidden!
+
     size_t renderMemorySize = MB(1);
     void  *renderMemory = malloc(renderMemorySize);
-    UNUSED(renderMemory);
+
     size_t appMemorySize = GB(1);
     void  *appMemory = malloc(appMemorySize);
 
@@ -246,8 +380,8 @@ int main(int argc, char **argv) {
     input_t input = {0};
     ps.input = &input;
 
-    char *appName = "Minecraft";
-    win32State_t winState = WindowsInit(1280, 720, appName);
+    char       *appName = "Minecraft";
+    w64_state_t winState = WindowsInit(1280, 720, appName);
     ps.platformHandle = &winState;
     ps.performanceFreq = HiResPerformanceFreq();
     ps.PerfQuery = &HiResPerformanceQuery;
@@ -259,9 +393,13 @@ int main(int argc, char **argv) {
     gameCode_t gc = LoadGameCode(winState.sourceDLL, winState.targetDLL);
     Assert(gc.isValid);
 
+    w64_rendering_t rendering = RenderingInit(&winState);
+
     renderList_t renderList = {0};
     renderList.windowWidth = winState.windowWidth;
     renderList.windowHeight = winState.windowHeight;
+    renderList.renderMemory = renderMemory;
+    renderList.renderMemoryMaxSz = renderMemorySize;
 
     renderList.aspectRatio = (f32)renderList.windowWidth / renderList.windowHeight;
     renderList.metersToPixels = 40.0f;
@@ -292,9 +430,11 @@ int main(int argc, char **argv) {
             gc.gameUpdate(&ps);
         }
 
-        // Frame(&renderList);
-        InputUpdate(ps.input);
+        RenderingFrame(&renderList, &rendering.backBuffer);
+        RenderingFlip(&rendering);
+        renderList.renderMemoryCurrSz = 0;
 
+        InputUpdate(ps.input);
         s64 endTime = HiResPerformanceQuery();
         deltaTime = (f32)MaxF64(((endTime - startTime) / (f64)ps.performanceFreq), 0);
         totalTime += deltaTime;
