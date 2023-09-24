@@ -88,16 +88,51 @@ static void DrawBufferLine(w64Drawbuffer_t *buffer, s32 x0, s32 y0, s32 x1, s32 
     }
 }
 
+// STUDY(pf): barycentric coordinates.
 static f32 lineDistance2D(v2f a, v2f b, v2f p) {
     v2f n{a.y - b.y, b.x - a.x};
     f32 d = a.x * b.y - a.y * b.x;
     return (dot(n, p) + d) / length(n);
 }
 
-static f32 bary2D(v2f a, v2f b, v2f c, v2f p) { 
+static f32 bary2D(v2f a, v2f b, v2f c, v2f p) {
     return lineDistance2D(b, c, p) / lineDistance2D(b, c, a);
 }
 
+static void DrawBufferFillTriangle(w64Rendering_t *rend, v3f t0, v3f t1, v3f t2,
+                                   v4f c0, v4f c1, v4f c2) {
+    v3f min = v3f{(f32)rend->backBuffer.width - 1, (f32)rend->backBuffer.height - 1, 0.0f};
+    v3f max = v3f{0.0f, 0.0f, 0.0f};
+    if (min.x > t0.x) min.x = t0.x;
+    if (min.x > t1.x) min.x = t1.x;
+    if (min.x > t2.x) min.x = t2.x;
+    if (min.y > t0.y) min.y = t0.y;
+    if (min.y > t1.y) min.y = t1.y;
+    if (min.y > t2.y) min.y = t2.y;
+    if (max.x < t0.x) max.x = t0.x;
+    if (max.x < t1.x) max.x = t1.x;
+    if (max.x < t2.x) max.x = t2.x;
+    if (max.y < t0.y) max.y = t0.y;
+    if (max.y < t1.y) max.y = t1.y;
+    if (max.y < t2.y) max.y = t2.y;
+    for (int y = (int)min.y; y <= (int)max.y; ++y)
+        for (int x = (int)min.x; x <= (int)max.x; ++x) {
+            v2f p = {(f32)x, (f32)y};
+            f32 t0_cont = bary2D(t0.xy, t1.xy, t2.xy, p);
+            f32 t1_cont = bary2D(t1.xy, t2.xy, t0.xy, p);
+            f32 t2_cont = bary2D(t2.xy, t0.xy, t1.xy, p);
+            if (t0_cont < 0 || t1_cont < 0 || t2_cont < 0) continue;
+            u32 *pi = (u32 *)rend->backBuffer.memory + ((y * rend->backBuffer.width) + x);
+            v4f  int_col = t0_cont * c0 + t1_cont * c1 + t2_cont * c2;
+            // v4f  int_col = c0;
+            // int_col = normalize(int_col);
+            u32  pc = ConvertToPackedU32(int_col);
+            *pi = pc;
+        }
+}
+
+#define USE_BARY 1
+#if USE_BARY
 // barycentric fill.
 static void DrawBufferFillTriangle(w64Rendering_t *rend, v3f t0, v3f t1, v3f t2,
                                    v4f c0) {
@@ -115,23 +150,18 @@ static void DrawBufferFillTriangle(w64Rendering_t *rend, v3f t0, v3f t1, v3f t2,
     if (max.y < t0.y) max.y = t0.y;
     if (max.y < t1.y) max.y = t1.y;
     if (max.y < t2.y) max.y = t2.y;
-    DrawBufferLine(&rend->backBuffer, (s32)t0.x, (s32)t0.y, (s32)t1.x, (s32)t1.y, ageCOLOR_WHITE);
-    DrawBufferLine(&rend->backBuffer, (s32)t1.x, (s32)t1.y, (s32)t2.x, (s32)t2.y, ageCOLOR_WHITE);
-    DrawBufferLine(&rend->backBuffer, (s32)t2.x, (s32)t2.y, (s32)t0.x, (s32)t0.y, ageCOLOR_WHITE);
     u32 pc = ConvertToPackedU32(c0);
-    for (int y = (int)min.y; y < (int)max.y; ++y)
-        for (int x = (int)min.x; x < (int)max.x; ++x) {
-            // v3f bary = v3f{(f32)x, (f32)y, 0};
-            // v3f bary = BarycentricCoordinate(t0, t1, t2, v3f{(f32)x, (f32)y, 0});
-            // if (bary.x < 0 || bary.y < 0 || bary.z < 0) continue;
+    for (int y = (int)min.y; y <= (int)max.y; ++y)
+        for (int x = (int)min.x; x <= (int)max.x; ++x) {
             v2f p = {(f32)x, (f32)y};
-            if(bary2D(t0.xy, t1.xy, t2.xy, p) < 0 || bary2D(t1.xy, t2.xy, t0.xy, p) < 0 || bary2D(t2.xy, t0.xy, t1.xy, p) < 0) continue;
+            if (bary2D(t0.xy, t1.xy, t2.xy, p) < 0 || bary2D(t1.xy, t2.xy, t0.xy, p) < 0 || bary2D(t2.xy, t0.xy, t1.xy, p) < 0) continue;
             u32 *pi = (u32 *)rend->backBuffer.memory + ((y * rend->backBuffer.width) + x);
             *pi = pc;
         }
 }
 
-#if 0 // Piece-wise fill triangle.
+#else
+
 static void DrawBufferFillTriangle(w64Rendering_t *rend, v3f t0, v3f t1, v3f t2,
                                    v4f c0) {
 
@@ -152,11 +182,6 @@ static void DrawBufferFillTriangle(w64Rendering_t *rend, v3f t0, v3f t1, v3f t2,
     if (t1.y == t0.y)
         return;
 
-    // OUTLINE
-    DrawBufferLine(&rend->backBuffer, (s32)t0.x, (s32)t0.y, (s32)t1.x, (s32)t1.y, ageCOLOR_WHITE);
-    DrawBufferLine(&rend->backBuffer, (s32)t1.x, (s32)t1.y, (s32)t2.x, (s32)t2.y, ageCOLOR_WHITE);
-    DrawBufferLine(&rend->backBuffer, (s32)t2.x, (s32)t2.y, (s32)t0.x, (s32)t0.y, ageCOLOR_WHITE);
-
     f32 invTotH = 1 / (t2.y - t0.y);
     f32 invSegH = 1 / (t1.y - t0.y + 1);
     // NOTE(pf): First part of triangle, t0->t1
@@ -172,8 +197,8 @@ static void DrawBufferFillTriangle(w64Rendering_t *rend, v3f t0, v3f t1, v3f t2,
         for (int x = (int)a.x; x < (int)b.x; ++x)
             DrawBufferSetPixel(&rend->backBuffer, x, y, c0);
 
-        Sleep(20);
-        RenderingFlip(rend);
+        // Sleep(20);
+        // RenderingFlip(rend);
     }
     // NOTE(pf): 2nd part of tri, t1->t2
     invSegH = 1 / (t2.y - t1.y + 1);
@@ -189,11 +214,13 @@ static void DrawBufferFillTriangle(w64Rendering_t *rend, v3f t0, v3f t1, v3f t2,
 
         for (int x = (int)a.x; x < (int)b.x; ++x)
             DrawBufferSetPixel(&rend->backBuffer, x, y, c0);
-        Sleep(20);
-        RenderingFlip(rend);
+        // Sleep(20);
+        // RenderingFlip(rend);
     }
 }
+
 #endif
+
 w64Rendering_t RenderingInit(w64State_t *handle) {
 
     w64Rendering_t result = {0};
@@ -254,9 +281,29 @@ void RenderingFrame(renderList_t *rl, w64Rendering_t *rend) {
             t0.y = rl->windowHeight - t0.y;
             t1.y = rl->windowHeight - t1.y;
             t2.y = rl->windowHeight - t2.y;
-            DrawBufferFillTriangle(rend, t0, t1, t2, cmd->vert_col[0]);
+            DrawBufferLine(&rend->backBuffer, (s32)t0.x, (s32)t0.y, (s32)t1.x, (s32)t1.y, ageCOLOR_WHITE);
+            DrawBufferLine(&rend->backBuffer, (s32)t1.x, (s32)t1.y, (s32)t2.x, (s32)t2.y, ageCOLOR_WHITE);
+            DrawBufferLine(&rend->backBuffer, (s32)t2.x, (s32)t2.y, (s32)t0.x, (s32)t0.y, ageCOLOR_WHITE);
             rc_size = sizeof(rcTriangleOutline_t);
 
+        } break;
+
+        case rcTriangle: {
+
+            rcTriangle_t *cmd = (rcTriangle_t *)base;
+
+            v3f t0 = cmd->vertices[0] * rl->metersToPixels;
+            v3f t1 = cmd->vertices[1] * rl->metersToPixels;
+            v3f t2 = cmd->vertices[2] * rl->metersToPixels;
+
+            t0.y = rl->windowHeight - t0.y;
+            t1.y = rl->windowHeight - t1.y;
+            t2.y = rl->windowHeight - t2.y;
+            if (cmd->interpolate)
+                DrawBufferFillTriangle(rend, t0, t1, t2, cmd->vert_col[0], cmd->vert_col[1], cmd->vert_col[2]);
+            else
+                DrawBufferFillTriangle(rend, t0, t1, t2, cmd->vert_col[0]);
+            rc_size = sizeof(rcTriangle_t);
         } break;
 
         default:

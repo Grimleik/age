@@ -36,6 +36,7 @@ b32 InputKeyReleased(input_t *input, u32 key) {
 void *PushRenderCommand_(renderList_t *rl, RC_TYPE type, size_t sz) {
 
     renderCommand_t *result = (renderCommand_t *)((u8 *)rl->renderMemory + rl->renderMemoryCurrSz);
+    *result = {};
     result->type = type;
     rl->renderMemoryCurrSz += sz;
     Assert(rl->renderMemoryCurrSz < rl->renderMemoryMaxSz);

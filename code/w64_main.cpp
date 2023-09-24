@@ -275,8 +275,10 @@ int main(int argc, char **argv) {
     ps.input = &input;
 
     char *appName = "Minecraft";
+    s32   screenW = 800; // 1280;
+    s32   screenH = 800; // 720;
 
-    w64State_t winState = WindowsInit(1280, 720, appName);
+    w64State_t winState = WindowsInit(screenW, screenH, appName);
     ps.platformHandle = &winState;
 
     f64 totalTime = 0.0f;
@@ -298,7 +300,7 @@ int main(int argc, char **argv) {
     renderList.metersToPixels = 40.0f;
     ps.renderList = &renderList;
 
-    // model_t model = LoadModel("../../assets/obj/african_head.obj");
+    model_t model = LoadModel("../../assets/obj/african_head.obj");
     gc.gameInit(&ps, false);
     while (ps.isRunning) {
         s64 startTime = HiResPerformanceQuery();
@@ -323,6 +325,28 @@ int main(int argc, char **argv) {
         if (gc.gameUpdate) {
             gc.gameUpdate(&ps);
         }
+#if 0
+        for(int i = 0; i < model.faces.size(); ++i) {
+            std::vector<int> face = model.faces[i];
+            v3f screenCoords[3];
+            v3f worldCoords[3];
+            for(int j = 0; j < 3; ++j) {
+                v3f v = model.vertices[face[j]];
+                screenCoords[j] = v3f{(v.x + 1.0f) * renderList.windowWidth / 80.0f, (v.y + 1.0f) * renderList.windowHeight / 80.0f, v.z};
+                worldCoords[j] = v;
+            }
+            v3f n = cross((worldCoords[2] - worldCoords[0]), (worldCoords[1] - worldCoords[0]));
+            n = normalize(n);
+            f32 intensity = dot(n, v3f{0.0f, 0.0f, -1.0f});
+            if(intensity >0) {
+                rcTriangle_t *cmd = PushRenderCommand(&renderList, rcTriangle);
+                cmd->vertices[0] = screenCoords[0];
+                cmd->vertices[1] = screenCoords[1];
+                cmd->vertices[2] = screenCoords[2];
+                cmd->vert_col[0] = cmd->vert_col[1] = cmd->vert_col[2] = v4f{Random01(), Random01(), Random01(), 1.0f};//ageCOLOR_WHITE * intensity;
+            }
+        }
+#endif
 
         RenderingFrame(&renderList, &rendering);
 

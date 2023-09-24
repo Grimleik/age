@@ -48,7 +48,7 @@ GAME_UPDATE(GameUpdate) {
         }
     }
 
-    state->accumulation += platformState->deltaTime;// * 0.1f;
+    state->accumulation += platformState->deltaTime; // * 0.1f;
     rcClearColor_t *cmd = PushRenderCommand(platformState->renderList, rcClearColor);
     // cmd->color = ageCOLOR_BLUE;
     cmd->color = ageCOLOR_BLACK;
@@ -60,15 +60,11 @@ GAME_UPDATE(GameUpdate) {
     cmd2->col1 = ageCOLOR_GREEN;
 
     for (int i = 0; i < 1; ++i) {
-        rcTriangleOutline_t *cmd3 = PushRenderCommand(platformState->renderList, rcTriangleOutline);
-        if (i == 0)
-            cmd3->vert_col[0] = cmd3->vert_col[1] = cmd3->vert_col[2] = ageCOLOR_GREEN;
-        else if (i == 1)
-            cmd3->vert_col[0] = cmd3->vert_col[1] = cmd3->vert_col[2] = ageCOLOR_RED;
-        else
-            cmd3->vert_col[0] = cmd3->vert_col[1] = cmd3->vert_col[2] = ageCOLOR_BLUE;
+        rcTriangle_t *cmd3 = PushRenderCommand(platformState->renderList, rcTriangle);
+        cmd3->vert_col[0] = ageCOLOR_RED;
+        cmd3->vert_col[1] = ageCOLOR_GREEN;
+        cmd3->vert_col[2] = ageCOLOR_BLUE;
 
-        // f32 dtSin = (f32)sin(state->accumulation);
         cmd3->vertices[0] = v3f{5.0f + i * 2, 6.0f, 0.0f};
         cmd3->vertices[1] = v3f{10.0f + i * 2, 5.0f + 5.0f * (f32)sin(1.0f), 0.0f};
         cmd3->vertices[2] = v3f{15.0f + i * 2, 4.0f, 0.0f};

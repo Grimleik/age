@@ -102,6 +102,22 @@ struct v3f {
     };
 };
 
+inline v3f operator/(v3f a, f32 s) {
+    return v3f{a.x / s, a.y / s, a.z / s};
+}
+
+inline f32 length(v3f a) {
+    return (f32)sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+}
+
+inline v3f normalize(v3f a) {
+    return a / length(a);
+}
+
+inline f32 dot(v3f a, v3f b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
 inline v3f operator+(v3f a, v3f b) {
     return v3f{a.x + b.x, a.y + b.y, a.z + b.z};
 }
@@ -132,6 +148,7 @@ struct v4f {
             f32 r, g, b, a;
         };
         f32 e[4];
+        v3f xyz;
     };
 };
 
@@ -149,6 +166,18 @@ inline v4f operator+(const v4f a, v4f b) {
 
 inline v4f operator*(const v4f a, const f32 s) {
     return v4f{a.x * s, a.y * s, a.z * s, a.w * s};
+}
+
+inline v4f operator/(v4f a, f32 s) {
+    return v4f{a.x / s, a.y / s, a.z / s, a.w / s};
+}
+
+inline f32 length(v4f a) {
+    return (f32)sqrt(a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w);
+}
+
+inline v4f normalize(v4f a) {
+    return a / length(a);
 }
 
 inline v4f operator*(const f32 s, const v4f a) {
@@ -252,6 +281,7 @@ inline f32 Random(f32 min, f32 max) {
 enum RC_TYPE {
     rcClearColor,
     rcLine,
+    rcTriangle,
     rcTriangleOutline,
 };
 
@@ -270,6 +300,13 @@ struct rcLine_t {
     v2f             p1;
     v4f             col0;
     v4f             col1;
+};
+
+struct rcTriangle_t {
+    renderCommand_t base;
+    v3f             vertices[3];
+    v4f             vert_col[3];
+    b32             interpolate;
 };
 
 struct rcTriangleOutline_t {
