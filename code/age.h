@@ -1,3 +1,6 @@
+/* ========================================================================
+   Creator: Grimleik $
+   ========================================================================*/
 #if !defined(AGE_H)
 #define AGE_H
 
@@ -9,6 +12,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <xmmintrin.h>
+#include <vector>
 
 /*==============================TYPES==============================*/
 
@@ -34,6 +39,7 @@ typedef size_t MemoryMarker;
 #define UNUSED(x) x
 
 #define PI 3.14159265359F
+#define HALF_PI PI * 0.5f
 #define RAD2DEG 180.F / PI
 
 #define KB(Value) ((Value)*1024LL)
@@ -57,16 +63,67 @@ typedef size_t MemoryMarker;
 
 #endif
 
-typedef struct v2f {
+struct v2f {
     union {
         struct {
             f32 x, y;
         };
         f32 e[2];
     };
-} v2f;
+};
 
-typedef struct v4f {
+inline v2f operator/(v2f a, f32 s) {
+    return v2f{a.x / s, a.y / s};
+}
+
+inline f32 length(v2f a) {
+    return (f32)sqrt(a.x * a.x + a.y * a.y);
+}
+
+inline v2f normalize(v2f a) {
+    return a / length(a);
+}
+
+inline f32 dot(v2f a, v2f b) {
+    return a.x * b.x + a.y * b.y;
+}
+
+struct v3f {
+    union {
+        struct {
+            f32 x, y, z;
+        };
+
+        struct {
+            f32 r, g, b;
+        };
+        f32 e[3];
+        v2f xy;
+    };
+};
+
+inline v3f operator+(v3f a, v3f b) {
+    return v3f{a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+inline v3f operator-(v3f a, v3f b) {
+    return v3f{a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+inline v3f operator*(f32 s, v3f a) {
+    return v3f{a.x * s, a.y * s, a.z * s};
+}
+
+inline v3f operator*(v3f a, f32 s) {
+    return v3f{a.x * s, a.y * s, a.z * s};
+}
+inline v3f cross(v3f a, v3f b) {
+    return v3f{a.y * b.z - a.z * b.y,
+               a.z * b.x - a.x - b.z,
+               a.x * b.y - a.y * b.x};
+}
+
+struct v4f {
     union {
         struct {
             f32 x, y, z, w;
@@ -76,33 +133,51 @@ typedef struct v4f {
         };
         f32 e[4];
     };
-} v4f;
+};
 
-inline v4f v4f_adds(const v4f a, f32 s) {
-    return (v4f){a.x + s, a.y + s, a.z + s, a.w + s};
+inline v4f operator+(const v4f a, f32 s) {
+    return v4f{a.x + s, a.y + s, a.z + s, a.w + s};
 }
 
-inline v4f v4f_add(const v4f a, v4f b) {
-    return (v4f){a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w};
+inline v4f operator+(f32 s, const v4f a) {
+    return v4f{a.x + s, a.y + s, a.z + s, a.w + s};
 }
 
-inline v4f v4f_mul(const v4f a, const f32 s) {
-    return (v4f){a.x * s, a.y * s, a.z * s, a.w * s};
+inline v4f operator+(const v4f a, v4f b) {
+    return v4f{a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w};
 }
 
-inline v4f v4f_lerp(const v4f a, const v4f b, const f32 t) {
-    // res = (1 - t) * a + b * t
-    return v4f_add(v4f_mul(a, (1 - t)), v4f_mul(b, t));
+inline v4f operator*(const v4f a, const f32 s) {
+    return v4f{a.x * s, a.y * s, a.z * s, a.w * s};
+}
+
+inline v4f operator*(const f32 s, const v4f a) {
+#if 0
+    v4f result;
+    __m128 scalar = _mm_set1_ps(s);
+    __m128 vec = _mm_load_ps(a.e);
+    __m128 res = _mm_mul_ps(scalar, vec);
+    _mm_storeu_ps(result.e, res);
+    return result;
+#else
+    return v4f{a.x * s, a.y * s, a.z * s, a.w * s};
+#endif
+}
+
+inline v4f lerp(const v4f a, const v4f b, const f32 t) {
+    return (1 - t) * a + b * t;
 }
 
 #define ageCOLOR_RED \
-    (v4f) { 1.0f, 0.0f, 0.0f, 1.0f }
+    v4f { 1.0f, 0.0f, 0.0f, 1.0f }
 #define ageCOLOR_GREEN \
-    (v4f) { 0.0f, 1.0f, 0.0f, 1.0f }
+    v4f { 0.0f, 1.0f, 0.0f, 1.0f }
 #define ageCOLOR_BLACK \
-    (v4f) { 0.0f }
+    v4f { 0.0f }
 #define ageCOLOR_BLUE \
-    (v4f) { 0.0f, 0.0f, 1.0f, 1.0f }
+    v4f { 0.0f, 0.0f, 1.0f, 1.0f }
+#define ageCOLOR_WHITE \
+    v4f { 1.0f, 1.0f, 1.0f, 1.0f }
 
 inline u32 ConvertToPackedU32(const v4f vf) {
 #if 1
@@ -119,45 +194,45 @@ inline u32 ConvertToPackedU32(const v4f vf) {
 #endif
 }
 
-inline f64 MaxF64(f64 a, f64 b) {
+inline f64 Max(f64 a, f64 b) {
     return a > b ? a : b;
 }
 
-inline f32 MaxF32(f32 a, f32 b) {
+inline f32 Max(f32 a, f32 b) {
     return a > b ? a : b;
 }
 
-inline f32 MinF32(f32 a, f32 b) {
+inline f32 Min(f32 a, f32 b) {
     return a < b ? a : b;
 }
 
-inline s32 MaxS32(s32 a, s32 b) {
+inline s32 Max(s32 a, s32 b) {
     return a > b ? a : b;
 }
 
-inline s32 MinS32(s32 a, s32 b) {
+inline s32 Min(s32 a, s32 b) {
     return a < b ? a : b;
 }
 
-inline s32 ContainS32(s32 val, s32 minVal, s32 maxVal) {
-    return MaxS32(MinS32(val, maxVal), minVal);
+inline s32 Contain(s32 val, s32 minVal, s32 maxVal) {
+    return Max(Min(val, maxVal), minVal);
 }
 
-inline f32 ContainF32(f32 val, f32 minVal, f32 maxVal) {
-    return MaxF32(MinF32(val, maxVal), minVal);
+inline f32 Contain(f32 val, f32 minVal, f32 maxVal) {
+    return Max(Min(val, maxVal), minVal);
 }
 
-inline s32 WrapS32(s32 x, s32 xMax) {
+inline s32 Wrap(s32 x, s32 xMax) {
     s32 result = (x + xMax) % xMax;
     return result;
 }
 
-inline f32 ClampF32(f32 x, f32 xMin, f32 xMax) {
+inline f32 Clamp(f32 x, f32 xMin, f32 xMax) {
     f32 result = x > xMax ? xMax : (x < xMin ? xMin : x);
     return result;
 }
 
-inline f32 SquareF32(f32 value) {
+inline f32 Square(f32 value) {
     f32 result = value * value;
     return result;
 }
@@ -170,33 +245,40 @@ inline f32 Random01() {
     return rand() / (f32)(RAND_MAX);
 }
 
-inline f32 RandomF32(f32 min, f32 max) {
+inline f32 Random(f32 min, f32 max) {
     return min + (Random01() * (max - min));
 }
 
-typedef enum RC_TYPE {
+enum RC_TYPE {
     rcClearColor,
     rcLine,
-} RC_TYPE;
+    rcTriangleOutline,
+};
 
-typedef struct renderCommand_t {
+struct renderCommand_t {
     RC_TYPE type;
-} renderCommand_t;
+};
 
-typedef struct rcClearColor_t {
+struct rcClearColor_t {
     renderCommand_t base;
     v4f             color;
-} rcClearColor_t;
+};
 
-typedef struct rcLine_t {
+struct rcLine_t {
     renderCommand_t base;
     v2f             p0;
     v2f             p1;
     v4f             col0;
     v4f             col1;
-} rcLine_t;
+};
 
-typedef struct renderList_t {
+struct rcTriangleOutline_t {
+    renderCommand_t base;
+    v3f             vertices[3];
+    v4f             vert_col[3];
+};
+
+struct renderList_t {
     u32    windowWidth;
     u32    windowHeight;
     f32    aspectRatio;
@@ -204,28 +286,28 @@ typedef struct renderList_t {
     void  *renderMemory;
     size_t renderMemoryMaxSz;
     size_t renderMemoryCurrSz;
-} renderList_t;
+};
 
 void *PushRenderCommand_(renderList_t *rl, RC_TYPE type, size_t sz);
-#define PushRenderCommand(rl, TYPE) PushRenderCommand_(rl, TYPE, sizeof(TYPE##_t))
+#define PushRenderCommand(rl, TYPE) (TYPE##_t *)PushRenderCommand_(rl, TYPE, sizeof(TYPE##_t))
 
-typedef enum FRAME {
+enum FRAME {
     FRAME_CURRENT = 0,
     FRAME_PREVIOUS = 1,
     FRAME_COUNT,
-} FRAME;
+};
 
-typedef enum AXIS {
+enum AXIS {
     AXIS_MOUSE,
     AXIS_MOUSE_WHEEL,
     AXIS_GP_LEFT,
     AXIS_GP_RIGHT,
     AXIS_MAX_STATES,
-} AXIS;
+};
 
 // NOTE(pf): These are based on windows virtual keys, other platforms might have
 // to do a mapping function in the input handling.
-typedef enum KEY {
+enum KEY {
     KEY_M1 = 1,
     KEY_M2 = 2,
     KEY_ARROW_LEFT = 0x25,
@@ -297,17 +379,16 @@ typedef enum KEY {
     KEY_K8 = '8',
     KEY_K9 = '9',
     KEY_MAX_STATES = 0xFF
-} KEY;
+};
+struct input_t {
 
-typedef struct keyState_t {
-    b32 isDown;
-} keyState_t;
+    struct keyState_t {
+        b32 isDown;
+    };
 
-typedef struct axisState_t {
-    f32 x, y;
-} axisState_t;
-
-typedef struct input_t {
+    struct axisState_t {
+        f32 x, y;
+    };
 
     // void Update();
     // void UpdateKey(u32 keyCode, b32 keyState);
@@ -324,7 +405,7 @@ typedef struct input_t {
     keyState_t  keyStates[FRAME_COUNT][KEY_MAX_STATES];
     axisState_t axisStates[FRAME_COUNT][AXIS_MAX_STATES];
     u8          activeFrame;
-} input_t;
+};
 
 void InputUpdate(input_t *);
 
@@ -335,7 +416,16 @@ b32 InputKeyPressed(input_t *, u32);
 b32 InputKeyDown(input_t *, u32);
 b32 InputKeyRelease(input_t *, u32);
 
-typedef struct platformState_t platformState_t;
+struct platformState_t {
+    input_t      *input;
+    renderList_t *renderList;
+    void         *memory;
+    MemoryMarker  memorySize;
+    f32           deltaTime;
+    b32           isRunning;
+    void         *platformHandle;
+};
+
 #define GAME_INIT(name) void name(platformState_t *platformState, b32 reloaded)
 typedef GAME_INIT(GameInit_t);
 
@@ -344,23 +434,5 @@ typedef GAME_UPDATE(GameUpdate_t);
 
 #define GAME_SHUTDOWN(name) void name(platformState_t *platformState)
 typedef GAME_SHUTDOWN(GameShutdown_t);
-
-#define HI_RES_PERF_FREQ(name) s64 name()
-typedef HI_RES_PERF_FREQ(HiResPerformanceFreq_t);
-
-#define HI_RES_PERF_QUERY(name) s64 name()
-typedef HI_RES_PERF_QUERY(HiResPerformanceQuery_t);
-
-typedef struct platformState_t {
-    HiResPerformanceQuery_t *PerfQuery;
-    input_t                 *input;
-    renderList_t            *renderList;
-    void                    *memory;
-    MemoryMarker             memorySize;
-    s64                      performanceFreq;
-    f32                      deltaTime;
-    b32                      isRunning;
-    void                    *platformHandle;
-} platformState_t;
 
 #endif

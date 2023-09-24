@@ -2,48 +2,16 @@
    Creator: Grimleik $
    ========================================================================*/
 #include "age.h"
+#include "w64_main.h"
+#include "w64_software_rendering.h"
 
-#include <Windows.h>
-#include <dwmapi.h>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "winmm.lib")
-#pragma comment(lib, "Dwmapi.lib")
-
-typedef struct gameCode_t {
-    HMODULE         gameCodeDLL;
-    char           *gameCodeDLLName;
-    GameInit_t     *gameInit;
-    GameUpdate_t   *gameUpdate;
-    GameShutdown_t *gameShutdown;
-    b32             isValid;
-    FILETIME        lastDLLWriteTime;
-} gameCode_t;
-
-typedef struct w64_drawbuffer_t {
-    void *memory;
-    s32   width;
-    s32   height;
-    u32   pitch;
-    u32   bytesPerPixel;
-} w64_drawbuffer_t;
-
-typedef struct w64_rendering_t {
-    HDC              deviceContext;
-    w64_drawbuffer_t backBuffer;
-    BITMAPINFO       backBufferInfo;
-    b32              vsync;
-} w64_rendering_t;
-
-typedef struct w64_state_t {
-    gameCode_t gameCode;
-    char      *sourceDLL;
-    char      *targetDLL;
-    char      *pdbLockFile;
-    s32        windowWidth;
-    s32        windowHeight;
-    HWND       hwnd;
-} w64_state_t;
 
 void CopyStrings(char *source, char *dest, size_t size) {
     for (int i = 0; i < size; ++i)
@@ -120,14 +88,14 @@ void UnloadGameCode(gameCode_t *gc) {
     gc->gameUpdate = GameUpdateStub;
 }
 
-HI_RES_PERF_FREQ(HiResPerformanceFreq) {
+s64 HiResPerformanceFreq() {
     LARGE_INTEGER countsPerSec;
     QueryPerformanceFrequency(&countsPerSec);
     s64 result = countsPerSec.QuadPart;
     return result;
 }
 
-HI_RES_PERF_FREQ(HiResPerformanceQuery) {
+s64 HiResPerformanceQuery() {
     LARGE_INTEGER currentTime;
     QueryPerformanceCounter(&currentTime);
     s64 result = currentTime.QuadPart;
@@ -138,7 +106,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-void WindowsInitGameCode(char *sourceDLL, char *targetDLL, char *pdbFile, w64_state_t *state) {
+void WindowsInitGameCode(char *sourceDLL, char *targetDLL, char *pdbFile, w64State_t *state) {
     char exeFileName[MAX_PATH];
     /*DWORD sizeOfFilename = */ GetModuleFileNameA(0, exeFileName, sizeof(exeFileName));
     char *onePastLastSlash = exeFileName;
@@ -165,18 +133,18 @@ void WindowsInitGameCode(char *sourceDLL, char *targetDLL, char *pdbFile, w64_st
     size_t pdbSize = CatStrings(onePastLastSlash - exeFileName, exeFileName,
                                 sizeof(pdbLockFilename) - 1, pdbLockFilename,
                                 sizeof(pdbLockFileFullPath), pdbLockFileFullPath);
-    state->sourceDLL = malloc(sourceSize + 1);
+    state->sourceDLL = (char *)malloc(sourceSize + 1);
     CopyStrings(sourceGameCodeDLLFullPath, state->sourceDLL, sourceSize);
-    state->targetDLL = malloc(tempSize + 1);
+    state->targetDLL = (char *)malloc(tempSize + 1);
     CopyStrings(tempGameCodeDLLFullPath, state->targetDLL, tempSize);
-    state->pdbLockFile = malloc(pdbSize + 1);
+    state->pdbLockFile = (char *)malloc(pdbSize + 1);
     CopyStrings(pdbLockFileFullPath, state->pdbLockFile, pdbSize);
 }
 
-w64_state_t WindowsInit(u32 wWidth, u32 wHeight, const char *appName) {
-    w64_state_t result = {0};
-    WNDCLASSEX  wc = {0};
-    HINSTANCE   hinstance = GetModuleHandle(NULL);
+w64State_t WindowsInit(u32 wWidth, u32 wHeight, const char *appName) {
+    w64State_t result = {0};
+    WNDCLASSEX wc = {0};
+    HINSTANCE  hinstance = GetModuleHandle(NULL);
 
     wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     wc.lpfnWndProc = WindowProc;
@@ -247,126 +215,52 @@ void ProcessWindowsMessageQueue(platformState_t *state) {
     }
 }
 
-/*==============================RENDERING==============================*/
+struct model_t {
 
-static void DrawBufferClear(w64_drawbuffer_t *buffer, v4f color) {
+    std::vector<v3f>              vertices;
+    std::vector<std::vector<int>> faces;
+};
 
-    u32 packedColor = ConvertToPackedU32(color);
+model_t LoadModel(const char *filename) {
+    model_t result = {};
 
-    if ((packedColor << 8) == 0)
-        memset(buffer->memory, 0, buffer->width * buffer->height * buffer->bytesPerPixel);
+    std::ifstream in;
+    in.open(filename, std::ifstream::in);
+    if (in.fail())
+        return result;
 
-    else {
-        u32 *p = (u32 *)buffer->memory;
-        for (int i = 0; i < buffer->width * buffer->height; ++i)
-            *p++ = packedColor;
-    }
-}
+    std::string line;
+    while (!in.eof()) {
+        std::getline(in, line);
+        std::istringstream iss(line.c_str());
 
-static void DrawBufferLine(w64_drawbuffer_t *buffer, s32 x0, s32 y0, s32 x1, s32 y1,
-                           v4f color0, v4f color1) {
-    // Clamp into buffer: "clipping ?"
-    x0 = ContainS32(x0, 0, buffer->width);
-    y0 = ContainS32(y0, 0, buffer->height);
-    x1 = ContainS32(x1, 0, buffer->width);
-    y1 = ContainS32(y1, 0, buffer->height);
+        char trash;
+        if (!line.compare(0, 2, "v ")) {
+            iss >> trash;
+            v3f v;
+            for (int i = 0; i < 3; ++i)
+                iss >> v.e[i];
+            result.vertices.push_back(v);
 
-    s32 xMin = MinS32(x0, x1);
-    s32 xMax = MaxS32(x0, x1);
-
-    s32 yMin = MinS32(y0, y1);
-    s32 yMax = MaxS32(y0, y1);
-
-    s32 steps = MaxS32((yMax - yMin), (xMax - xMin));
-    if (steps > 0) {
-        f32 dx = (x1 - x0) / (f32)steps;
-        f32 dy = (y1 - y0) / (f32)steps;
-        f32 stepSize = 1.0f / steps;
-        for (s32 step = 0; step < steps; ++step) {
-            s32 x = ContainS32((s32)(x0 + (dx * step)), 0, buffer->width);
-            s32 y = ContainS32((s32)(y0 + (dy * step)), 0, buffer->height);
-
-            u32 *p = (u32 *)buffer->memory + ((y * buffer->width) + x);
-            v4f  lerpC = v4f_lerp(color0, color1, stepSize * step);
-            u32  packedColor = ConvertToPackedU32(lerpC);
-            *p = packedColor;
+            // return result;
+        } else if (!line.compare(0, 2, "f ")) {
+            std::vector<int> face;
+            int              itrash, idx;
+            iss >> trash;
+            while (iss >> idx >> trash >> itrash >> trash >> itrash) {
+                idx--;
+                face.push_back(idx);
+            }
+            result.faces.push_back(face);
         }
     }
-}
-
-static w64_rendering_t RenderingInit(w64_state_t *handle) {
-
-    w64_rendering_t result = {0};
-    result.backBuffer.width = handle->windowWidth;
-    result.backBuffer.height = handle->windowHeight;
-    result.backBuffer.bytesPerPixel = 4;
-    result.backBuffer.pitch = result.backBuffer.width * result.backBuffer.bytesPerPixel;
-    result.backBuffer.memory = malloc(result.backBuffer.width * result.backBuffer.height * result.backBuffer.bytesPerPixel);
-
-    result.backBufferInfo.bmiHeader.biSize = sizeof(result.backBufferInfo.bmiHeader);
-    result.backBufferInfo.bmiHeader.biWidth = result.backBuffer.width;
-    result.backBufferInfo.bmiHeader.biHeight = -(s32)(result.backBuffer.height);
-    result.backBufferInfo.bmiHeader.biPlanes = 1;
-    result.backBufferInfo.bmiHeader.biBitCount = (WORD)(result.backBuffer.bytesPerPixel * 8);
-    result.backBufferInfo.bmiHeader.biCompression = BI_RGB;
-
-    result.deviceContext = GetDC(handle->hwnd);
 
     return result;
 }
 
-static void RenderingFrame(renderList_t *rl, w64_drawbuffer_t *backBuffer) {
-
-    u8 *base = (u8 *)rl->renderMemory;
-    u8 *end = (u8 *)rl->renderMemory + rl->renderMemoryCurrSz;
-    for (; base != end;) {
-
-        renderCommand_t *rc = (renderCommand_t *)base;
-        size_t           rc_size = sizeof(renderCommand_t);
-        switch (rc->type) {
-
-        case rcClearColor: {
-            rcClearColor_t *cmd = (rcClearColor_t *)base;
-            DrawBufferClear(backBuffer, cmd->color);
-            rc_size = sizeof(rcClearColor_t);
-        } break;
-
-        case rcLine: {
-            rcLine_t *cmd = (rcLine_t *)base;
-            s32       x0 = (s32)(cmd->p0.x * rl->metersToPixels);
-            s32       y0 = (s32)(cmd->p0.y * rl->metersToPixels);
-            s32       x1 = (s32)(cmd->p1.x * rl->metersToPixels);
-            s32       y1 = (s32)(cmd->p1.y * rl->metersToPixels);
-            // flip y.
-            y0 = rl->windowHeight - y0;
-            y1 = rl->windowHeight - y1;
-            DrawBufferLine(backBuffer, x0, y0, x1, y1, cmd->col0, cmd->col1);
-            rc_size = sizeof(rcLine_t);
-        } break;
-
-        default:
-            break;
-        }
-
-        base = ((u8 *)base) + rc_size;
-    }
-}
-
-static void RenderingFlip(w64_rendering_t *rs) {
-    StretchDIBits(rs->deviceContext, 0, 0,
-                  rs->backBuffer.width, rs->backBuffer.height,
-                  0, 0, rs->backBuffer.width, rs->backBuffer.height,
-                  rs->backBuffer.memory, &rs->backBufferInfo,
-                  DIB_RGB_COLORS, SRCCOPY);
-
-    if (rs->vsync) {
-        Assert(DwmFlush() == S_OK);
-    }
-}
-
 int main(int argc, char **argv) {
 
-    size_t renderMemorySize = MB(1);
+    size_t renderMemorySize = MB(10);
     void  *renderMemory = malloc(renderMemorySize);
 
     size_t appMemorySize = GB(1);
@@ -380,11 +274,10 @@ int main(int argc, char **argv) {
     input_t input = {0};
     ps.input = &input;
 
-    char       *appName = "Minecraft";
-    w64_state_t winState = WindowsInit(1280, 720, appName);
+    char *appName = "Minecraft";
+
+    w64State_t winState = WindowsInit(1280, 720, appName);
     ps.platformHandle = &winState;
-    ps.performanceFreq = HiResPerformanceFreq();
-    ps.PerfQuery = &HiResPerformanceQuery;
 
     f64 totalTime = 0.0f;
     f64 prevTotalTime = 0.0f;
@@ -393,7 +286,7 @@ int main(int argc, char **argv) {
     gameCode_t gc = LoadGameCode(winState.sourceDLL, winState.targetDLL);
     Assert(gc.isValid);
 
-    w64_rendering_t rendering = RenderingInit(&winState);
+    sr::w64Rendering_t rendering = sr::RenderingInit(&winState);
 
     renderList_t renderList = {0};
     renderList.windowWidth = winState.windowWidth;
@@ -405,6 +298,7 @@ int main(int argc, char **argv) {
     renderList.metersToPixels = 40.0f;
     ps.renderList = &renderList;
 
+    // model_t model = LoadModel("../../assets/obj/african_head.obj");
     gc.gameInit(&ps, false);
     while (ps.isRunning) {
         s64 startTime = HiResPerformanceQuery();
@@ -430,13 +324,14 @@ int main(int argc, char **argv) {
             gc.gameUpdate(&ps);
         }
 
-        RenderingFrame(&renderList, &rendering.backBuffer);
+        RenderingFrame(&renderList, &rendering);
+
         RenderingFlip(&rendering);
         renderList.renderMemoryCurrSz = 0;
 
         InputUpdate(ps.input);
         s64 endTime = HiResPerformanceQuery();
-        deltaTime = (f32)MaxF64(((endTime - startTime) / (f64)ps.performanceFreq), 0);
+        deltaTime = (f32)Max(((endTime - startTime) / (f64)HiResPerformanceFreq()), (s64)0);
         totalTime += deltaTime;
         ps.deltaTime = (f32)deltaTime;
 
@@ -444,6 +339,7 @@ int main(int argc, char **argv) {
             printf("FPS: %ld, Delta(ms): %lf Elapsed Time: %ld\n", (long)(1.0f / deltaTime), deltaTime * 1000.0f, (long)totalTime);
             prevTotalTime = totalTime;
         }
+        // ps.isRunning = false;
     }
     gc.gameShutdown(&ps);
     UnloadGameCode(&gc);
