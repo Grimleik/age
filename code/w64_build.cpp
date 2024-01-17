@@ -1,0 +1,5 @@
+#include "age.cpp"
+#include "w64_renderer_software.cpp"
+#include "w64_renderer_opengl.cpp"
+#include "w64_renderer.cpp"
+#include "w64_main.cpp"

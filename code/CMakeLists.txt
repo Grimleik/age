@@ -6,7 +6,7 @@ enable_testing()
 # Windows Build
 if(MSVC)
     if("${CMAKE_SIZEOF_VOID_P}" STREQUAL "8")
-        add_executable(w64 w64_main.cpp w64_software_rendering.cpp age.cpp)
+        add_executable(w64 w64_build.cpp)
     else()
      message("Not supported.")
     endif()
@@ -18,7 +18,7 @@ if(MSVC)
 endif()
 
 # DLL Build
-add_library(game SHARED game.cpp age.cpp)
+add_library(game SHARED game_build.cpp)
 target_compile_options(game PUBLIC -DLL -MTd -nologo -fp:fast -GR -EHa -EHsc -Zo -W4 -FC -Z7 -wd4100 -wd5246 -wd4201)
 
 set_property(

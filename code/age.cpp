@@ -39,6 +39,49 @@ void *PushRenderCommand_(renderList_t *rl, RC_TYPE type, size_t sz) {
     *result = {};
     result->type = type;
     rl->renderMemoryCurrSz += sz;
+    rl->commandCount++;
     Assert(rl->renderMemoryCurrSz < rl->renderMemoryMaxSz);
+    return result;
+}
+
+rcGroup_t *BeginRenderGroup(renderList_t *rl, mat4x4 proj, mat4x4 view, mat4x4 model) {
+    rcGroup_t *group = PushRenderCommand(rl, rcGroup);
+    group->commandCount = rl->commandCount;
+    group->projection = proj;
+    group->view = view;
+    group->model = model;
+    group->translation = v4f{0.0f};
+    rl->dbgOpenGroups++;
+    return group;
+}
+
+void EndRenderGroup(rcGroup_t *group, renderList_t *rl) {
+    group->commandCount = rl->commandCount - group->commandCount;
+    rl->dbgOpenGroups--;
+}
+
+MemoryStack::MemoryStack() : currentSize(0), totalSize(0) {
+}
+
+MemoryStack::~MemoryStack() {
+}
+
+void MemoryStack::Initialize(void *mem, MemoryMarker size) {
+    memory = mem;
+    totalSize = size;
+}
+
+void MemoryStack::ResetToMarker(MemoryMarker marker) {
+    currentSize = marker;
+}
+
+void MemoryStack::ZeroOutToMarker(MemoryMarker marker) {
+    memset((u8 *)memory + currentSize, 0, marker - currentSize);
+}
+
+void *MemoryStack::Allocate(MemoryMarker sizeInBytes) {
+    Assert(currentSize + sizeInBytes <= totalSize);
+    void *result = (u8 *)memory + currentSize;
+    currentSize += sizeInBytes;
     return result;
 }

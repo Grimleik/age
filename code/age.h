@@ -14,6 +14,7 @@
 #include <stddef.h>
 #include <xmmintrin.h>
 #include <vector>
+#include <memory>
 
 /*==============================TYPES==============================*/
 
@@ -42,7 +43,7 @@ typedef size_t MemoryMarker;
 #define HALF_PI PI * 0.5f
 #define RAD2DEG 180.F / PI
 
-#define KB(Value) ((Value)*1024LL)
+#define KB(Value) ((Value) * 1024LL)
 #define MB(Value) (KB(Value) * 1024LL)
 #define GB(Value) (MB(Value) * 1024LL)
 #define TB(Value) (GB(Value) * 1024LL)
@@ -140,6 +141,10 @@ inline v3f cross(v3f a, v3f b) {
 }
 
 struct v4f {
+    v4f() : x(0), y(0), z(0), w(0){};
+    v4f(f32 f) : x(f), y(f), z(f), w(f){};
+    v4f(f32 _x, f32 _y, f32 _z, f32 _w) : x(_x), y(_y), z(_z), w(_w){};
+    v4f(v3f v, f32 f) : x(v.x), y(v.y), z(v.z), w(f){};
     union {
         struct {
             f32 x, y, z, w;
@@ -156,6 +161,13 @@ inline v4f operator+(const v4f a, f32 s) {
     return v4f{a.x + s, a.y + s, a.z + s, a.w + s};
 }
 
+inline void operator+=(v4f &a, const v4f b) {
+    a.x += b.x;
+    a.y += b.y;
+    a.z += b.z;
+    a.w += b.w;
+}
+
 inline v4f operator+(f32 s, const v4f a) {
     return v4f{a.x + s, a.y + s, a.z + s, a.w + s};
 }
@@ -168,8 +180,22 @@ inline v4f operator*(const v4f a, const f32 s) {
     return v4f{a.x * s, a.y * s, a.z * s, a.w * s};
 }
 
+inline void operator*=(v4f &a, const f32 b) {
+    a.x *= b;
+    a.y *= b;
+    a.z *= b;
+    a.w *= b;
+}
+
 inline v4f operator/(v4f a, f32 s) {
     return v4f{a.x / s, a.y / s, a.z / s, a.w / s};
+}
+
+inline void operator/=(v4f &a, const f32 b) {
+    a.x /= b;
+    a.y /= b;
+    a.z /= b;
+    a.w /= b;
 }
 
 inline f32 length(v4f a) {
@@ -178,6 +204,10 @@ inline f32 length(v4f a) {
 
 inline v4f normalize(v4f a) {
     return a / length(a);
+}
+
+inline v4f hadamard(v4f a, v4f b) {
+    return {a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w};
 }
 
 inline v4f operator*(const f32 s, const v4f a) {
@@ -207,6 +237,81 @@ inline v4f lerp(const v4f a, const v4f b, const f32 t) {
     v4f { 0.0f, 0.0f, 1.0f, 1.0f }
 #define ageCOLOR_WHITE \
     v4f { 1.0f, 1.0f, 1.0f, 1.0f }
+
+struct mat4x4 {
+    mat4x4() {
+        r[0] = v4f{};
+        r[1] = v4f{};
+        r[2] = v4f{};
+        r[3] = v4f{};
+    }
+    union {
+        f32 e[4][4];
+        v4f r[4];
+    };
+};
+
+inline mat4x4 Mat4Identity() {
+    mat4x4 result = {};
+    result.e[0][0] = 1.0f;
+    result.e[1][1] = 1.0f;
+    result.e[2][2] = 1.0f;
+    result.e[3][3] = 1.0f;
+    return result;
+}
+
+inline mat4x4 Mat4RotationX(f32 theta) {
+    mat4x4 result = {};
+    result.e[0][0] = 1.0f;
+    result.e[1][1] = (f32)cos(theta);
+    result.e[1][2] = -(f32)sin(theta);
+    result.e[2][1] = (f32)sin(theta);
+    result.e[2][2] = (f32)cos(theta);
+
+    return result;
+}
+
+inline mat4x4 Mat4RotationY(f32 theta) {
+    mat4x4 result = {};
+    result.e[0][0] = (f32)cos(theta);
+    result.e[0][2] = (f32)sin(theta);
+    result.e[1][1] = 1.0f;
+    result.e[2][0] = -(f32)sin(theta);
+    result.e[2][2] = (f32)cos(theta);
+
+    return result;
+}
+
+inline mat4x4 Mat4RotationZ(f32 theta) {
+    mat4x4 result = {};
+    result.e[0][0] = (f32)cos(theta);
+    result.e[0][1] = -(f32)sin(theta);
+    result.e[1][0] = (f32)sin(theta);
+    result.e[1][1] = (f32)cos(theta);
+    result.e[2][2] = 1.0f;
+    return result;
+}
+
+inline mat4x4 Mat4Projection(f32 a, f32 fov, f32 near, f32 far) {
+    f32    fovRad = 1.0f / tanf(fov * 0.5f / 180.0f * PI);
+    mat4x4 result;
+    result.e[0][0] = a * fovRad;
+    result.e[1][1] = fovRad;
+    result.e[2][2] = far / (far - near);
+    result.e[3][2] = (-far * near) / (far - near);
+    result.e[2][3] = 1.0f;
+    result.e[3][3] = 0.0f;
+    return result;
+}
+
+inline v4f operator*(const v4f &v, const mat4x4 &mat) {
+    v4f result;
+    result.x = v.x * mat.e[0][0] + v.y * mat.e[1][0] + v.z * mat.e[2][0] + v.w * mat.e[3][0];
+    result.y = v.x * mat.e[0][1] + v.y * mat.e[1][1] + v.z * mat.e[2][1] + v.w * mat.e[3][1];
+    result.z = v.x * mat.e[0][2] + v.y * mat.e[1][2] + v.z * mat.e[2][2] + v.w * mat.e[3][2];
+    result.w = v.x * mat.e[0][3] + v.y * mat.e[1][3] + v.z * mat.e[2][3] + v.w * mat.e[3][3];
+    return result;
+}
 
 inline u32 ConvertToPackedU32(const v4f vf) {
 #if 1
@@ -279,6 +384,7 @@ inline f32 Random(f32 min, f32 max) {
 }
 
 enum RC_TYPE {
+    rcGroup,
     rcClearColor,
     rcLine,
     rcTriangle,
@@ -287,6 +393,15 @@ enum RC_TYPE {
 
 struct renderCommand_t {
     RC_TYPE type;
+};
+
+struct rcGroup_t {
+    renderCommand_t base;
+    mat4x4          projection;
+    mat4x4          view;
+    mat4x4          model;
+    v4f             translation;
+    size_t          commandCount; // nr of following commands to apply these settings to.
 };
 
 struct rcClearColor_t {
@@ -315,19 +430,38 @@ struct rcTriangleOutline_t {
     v4f             vert_col[3];
 };
 
+enum RENDER_MODE {
+    Software,
+    OpenGL,
+    // TODO:
+    // Vulkan,
+    // DX11,
+    // DX12,
+};
+
 struct renderList_t {
-    u32    windowWidth;
-    u32    windowHeight;
-    f32    aspectRatio;
-    f32    metersToPixels;
-    void  *renderMemory;
-    size_t renderMemoryMaxSz;
-    size_t renderMemoryCurrSz;
+    u32         windowWidth;
+    u32         windowHeight;
+    f32         aspectRatio;
+    f32         metersToPixels;
+    RENDER_MODE mode;
+    void       *renderMemory;
+    size_t      renderMemoryMaxSz;
+    size_t      renderMemoryCurrSz;
+    size_t      commandCount;
+    size_t      dbgOpenGroups;
+
+    void Reset() {
+        renderMemoryCurrSz = 0;
+        commandCount = 0;
+    }
 };
 
 void *PushRenderCommand_(renderList_t *rl, RC_TYPE type, size_t sz);
 #define PushRenderCommand(rl, TYPE) (TYPE##_t *)PushRenderCommand_(rl, TYPE, sizeof(TYPE##_t))
 
+rcGroup_t *BeginRenderGroup(renderList_t *rl, mat4x4 proj, mat4x4 view, mat4x4 model);
+void       EndRenderGroup(rcGroup_t *group, renderList_t *rl);
 enum FRAME {
     FRAME_CURRENT = 0,
     FRAME_PREVIOUS = 1,
@@ -452,6 +586,60 @@ void InputUpdateAxis(input_t *, u8, f32, f32);
 b32 InputKeyPressed(input_t *, u32);
 b32 InputKeyDown(input_t *, u32);
 b32 InputKeyRelease(input_t *, u32);
+
+class MemoryStack {
+  public:
+    MemoryStack();
+    ~MemoryStack();
+
+    void Initialize(void *mem, MemoryMarker size);
+
+    void ResetToMarker(MemoryMarker marker);
+
+    void ZeroOutToMarker(MemoryMarker marker);
+
+    void *Allocate(MemoryMarker sizeInBytes);
+
+    template <typename T>
+    T *Allocate(u32 count = 1);
+
+    template <typename T>
+    T *AllocateAndInitialize(u32 count = 1);
+
+    template <typename T>
+    void ResetToObject(T *obj);
+
+  private:
+    void        *memory;
+    MemoryMarker totalSize;
+    MemoryMarker currentSize;
+};
+
+template <typename T>
+inline T *MemoryStack::Allocate(u32 count) {
+    MemoryMarker sizeInBytes = sizeof(T) * count;
+    Assert(currentSize + sizeInBytes <= totalSize);
+    void *result = (u8 *)(memory) + currentSize;
+    currentSize += sizeInBytes;
+    return (T *)result;
+}
+
+template <typename T>
+inline T *MemoryStack::AllocateAndInitialize(u32 count) {
+    MemoryMarker sizeInBytes = sizeof(T) * count;
+    Assert(currentSize + sizeInBytes <= totalSize);
+    void *pMem = (u8 *)(memory) + currentSize;
+    currentSize += sizeInBytes;
+    T *result = (T *)pMem;
+    *result = {};
+    return result;
+}
+
+template <typename T>
+inline void MemoryStack::ResetToObject(T *obj) {
+    Memorymarker mmReset = (u8 *)obj - (u8 *)memory;
+    ResetToMarker(mmReset);
+}
 
 struct platformState_t {
     input_t      *input;

@@ -2,12 +2,15 @@
    Creator: Grimleik $
    ========================================================================*/
 
-// TODO: Render a Triangle.
-// TODO: Incorporate OpenGL.
-// TODO: 3D Rendering.
-// TODO: Start CubeWorld.
-
 #include "age.h"
+
+struct triangle_t {
+    v3f v[3];
+};
+
+struct mesh_t {
+    std::vector<triangle_t> tris;
+};
 
 struct gameState_t {
     f32    accumulation;
@@ -15,6 +18,7 @@ struct gameState_t {
     size_t memorySz;
     bool   isPaused;
     bool   shouldStepOnce;
+    mesh_t *cube;
 };
 
 GAME_INIT(GameInit) {
@@ -26,6 +30,31 @@ GAME_INIT(GameInit) {
     *state = {0};
     state->memory = ((u8 *)platformState->memory) + sizeof(gameState_t);
     state->memorySz = platformState->memorySize - sizeof(gameState_t);
+    state->cube = new mesh_t;
+    state->cube->tris = {
+        {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f},
+
+        // EAST
+        {1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f},
+
+        // NORTH
+        {1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f},
+        {1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f},
+
+        // WEST
+        {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+
+        // TOP
+        {0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f},
+        {0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f},
+
+        // BOTTOM
+        {1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},
+        {1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},
+    };
 }
 
 GAME_UPDATE(GameUpdate) {
@@ -49,26 +78,42 @@ GAME_UPDATE(GameUpdate) {
     }
 
     state->accumulation += platformState->deltaTime; // * 0.1f;
+    float      a = (f32)platformState->renderList->windowHeight / (f32)platformState->renderList->windowWidth ;
+    float      fov = 90.0f;
+    float      near = 0.1f;
+    float      far = 100.0f;
+    mat4x4     proj = Mat4Projection(a, fov, near, far);
+    mat4x4     view = Mat4Identity();
+    mat4x4     model = Mat4RotationY(state->accumulation);
+    rcGroup_t *group = BeginRenderGroup(platformState->renderList, proj, view, model);
+    group->translation = v4f{0.0f, 0.0f, 3.0f, 0.0f};
     rcClearColor_t *cmd = PushRenderCommand(platformState->renderList, rcClearColor);
     // cmd->color = ageCOLOR_BLUE;
     cmd->color = ageCOLOR_BLACK;
 
-    rcLine_t *cmd2 = PushRenderCommand(platformState->renderList, rcLine);
-    cmd2->p0 = v2f{2.5f, 2.5f};
-    cmd2->col0 = ageCOLOR_RED;
-    cmd2->p1 = v2f{2.5f, 10.5f};
-    cmd2->col1 = ageCOLOR_GREEN;
+    for(auto &tri : state->cube->tris) {
+        auto *triCmd = PushRenderCommand(platformState->renderList, rcTriangleOutline);
+        triCmd->vert_col[0] = ageCOLOR_RED;
+        triCmd->vert_col[1] = ageCOLOR_GREEN;
+        triCmd->vert_col[2] = ageCOLOR_BLUE;
 
+        triCmd->vertices[0] = tri.v[0];
+        triCmd->vertices[1] = tri.v[1];
+        triCmd->vertices[2] = tri.v[2];
+    }
+#if 0
     for (int i = 0; i < 1; ++i) {
-        rcTriangle_t *cmd3 = PushRenderCommand(platformState->renderList, rcTriangle);
+        auto *cmd3 = PushRenderCommand(platformState->renderList, rcTriangleOutline);
         cmd3->vert_col[0] = ageCOLOR_RED;
         cmd3->vert_col[1] = ageCOLOR_GREEN;
         cmd3->vert_col[2] = ageCOLOR_BLUE;
 
-        cmd3->vertices[0] = v3f{5.0f + i * 2, 6.0f, 0.0f};
-        cmd3->vertices[1] = v3f{10.0f + i * 2, 5.0f + 5.0f * (f32)sin(1.0f), 0.0f};
-        cmd3->vertices[2] = v3f{15.0f + i * 2, 4.0f, 0.0f};
+        cmd3->vertices[0] = v3f{-0.5f, -0.5f, 0.0f};
+        cmd3->vertices[1] = v3f{0.0f, 0.5f, 0.0f};
+        cmd3->vertices[2] = v3f{0.5f, -0.5f, 0.0f};
     }
+#endif
+    EndRenderGroup(group, platformState->renderList);
 }
 
 GAME_SHUTDOWN(GameShutdown) {

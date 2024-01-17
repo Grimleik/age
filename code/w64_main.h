@@ -5,6 +5,7 @@
 #define W64_MAIN_H
     
 #include <Windows.h>
+#include "age.h"
 
 struct gameCode_t {
     HMODULE         gameCodeDLL;
