@@ -6,9 +6,9 @@
 
 std::unique_ptr<IW64Renderer> IW64Renderer::Instance = nullptr;
 
-std::unique_ptr<IW64Renderer> IW64Renderer::Create(RENDER_MODE mode) {
+std::unique_ptr<IW64Renderer> IW64Renderer::Create(RENDER_MODE mode, const w64State_t &state) {
     if(Instance) {
-        Instance->Cleanup();
+        Instance->Cleanup(state);
         Instance = nullptr;
     }
     switch (mode) {

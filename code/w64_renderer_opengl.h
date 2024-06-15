@@ -4,14 +4,21 @@
    ========================================================================*/
 #define W64_OPENGL_H
 #include "w64_renderer.h"
-class W64RendOpenGL : public IW64Renderer {
+#pragma comment(lib, "opengl32.lib")
+
+class W64RendOpenGL : public IW64Renderer
+{
   public:
     W64RendOpenGL();
     ~W64RendOpenGL();
 
-    void Init(w64State_t &state) override;
+    bool Init(w64State_t &state) override;
     void Render(renderList_t &renderList) override;
-    void Cleanup() override;
+    void Cleanup(const w64State_t &state) override;
+
+  private:
+    HDC deviceContext;
+    HGLRC renderContext;
 };
 
 #endif

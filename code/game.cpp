@@ -3,29 +3,16 @@
    ========================================================================*/
 
 #include "age.h"
-
-struct triangle_t {
-    v3f v[3];
-};
-
-struct mesh_t {
-    std::vector<triangle_t> tris;
-};
-
-struct gameState_t {
-    f32    accumulation;
-    void  *memory;
-    size_t memorySz;
-    bool   isPaused;
-    bool   shouldStepOnce;
-    mesh_t *cube;
-};
+#include "game.h"
 
 GAME_INIT(GameInit) {
     if (reloaded) {
         return;
     }
 
+    platformState->renderList->mode = RENDER_MODE::OpenGL;
+
+    
     gameState_t *state = (gameState_t *)platformState->memory;
     *state = {0};
     state->memory = ((u8 *)platformState->memory) + sizeof(gameState_t);
@@ -84,12 +71,12 @@ GAME_UPDATE(GameUpdate) {
     float      far = 100.0f;
     mat4x4     proj = Mat4Projection(a, fov, near, far);
     mat4x4     view = Mat4Identity();
-    mat4x4     model = Mat4RotationY(state->accumulation);
+    mat4x4     model = Mat4RotationY(state->accumulation) * Mat4RotationZ(state->accumulation * 1.1f);
     rcGroup_t *group = BeginRenderGroup(platformState->renderList, proj, view, model);
     group->translation = v4f{0.0f, 0.0f, 3.0f, 0.0f};
     rcClearColor_t *cmd = PushRenderCommand(platformState->renderList, rcClearColor);
-    // cmd->color = ageCOLOR_BLUE;
-    cmd->color = ageCOLOR_BLACK;
+    cmd->color = ageCOLOR_BLUE;
+    // cmd->color = ageCOLOR_BLACK;
 
     for(auto &tri : state->cube->tris) {
         auto *triCmd = PushRenderCommand(platformState->renderList, rcTriangleOutline);

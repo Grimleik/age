@@ -1,0 +1,2 @@
+* Drawing routine for software opengl looks very similar can we break this out ?
+    Perhaps we tell the api layer to support different drawing commands that the generic loop uses ?

@@ -13,7 +13,7 @@ W64RendSoftware::W64RendSoftware() {
 W64RendSoftware::~W64RendSoftware() {
 }
 
-void W64RendSoftware::Init(w64State_t &state) {
+bool W64RendSoftware::Init(w64State_t &state) {
 
     backBuffer.width = state.windowWidth;
     backBuffer.height = state.windowHeight;
@@ -29,11 +29,12 @@ void W64RendSoftware::Init(w64State_t &state) {
     backBufferInfo.bmiHeader.biCompression = BI_RGB;
 
     deviceContext = GetDC(state.hwnd);
+    return true;
 }
 
 void W64RendSoftware::Render(renderList_t &renderList) {
-    u8 *base = (u8 *)renderList.renderMemory;
-    u8 *end = (u8 *)renderList.renderMemory + renderList.renderMemoryCurrSz;
+    u8 *base = renderList.begin();
+    u8 *end = renderList.end();
 
     rcGroup_t *activeGroup = nullptr;
     mat4x4     identityMat = Mat4Identity();
@@ -184,7 +185,7 @@ void W64RendSoftware::Render(renderList_t &renderList) {
     }
 }
 
-void W64RendSoftware::Cleanup() {
+void W64RendSoftware::Cleanup(const w64State_t &state) {
 }
 
 void W64RendSoftware::DrawBufferSetPixel(s32 x, s32 y, v4f col) {

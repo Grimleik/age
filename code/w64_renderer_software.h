@@ -5,14 +5,16 @@
 #define W64_RENDERER_SOFTWARE_H
 #include "w64_renderer.h"
 
+#pragma comment(lib, "winmm.lib")
+
 class W64RendSoftware : public IW64Renderer {
 
   public:
     W64RendSoftware();
     ~W64RendSoftware();
-    void Init(w64State_t &state) override;
+    bool Init(w64State_t &state) override;
     void Render(renderList_t &renderList) override;
-    void Cleanup() override;
+    void Cleanup(const w64State_t& state) override;
 
     struct back_buffer_t {
         void *memory;
