@@ -1,2 +1,10 @@
-* Drawing routine for software opengl looks very similar can we break this out ?
-    Perhaps we tell the api layer to support different drawing commands that the generic loop uses ?
+# TODO List
+- [1/2] Render a cube in software and OpenGL.
+    Support asset draw calls in software tomorrow.
+- [ ] Create a file format with defines like in the masters so that
+    shaders can be used in C/C++, HLSL, GLSL.
+        OBS(pf): Focus on HLSL and have GLSL support.
+            https://www.reddit.com/r/GraphicsProgramming/comments/14hqdxx/shader_compilation/
+- [ ] Add age namespace ?
+- [ ] Add profiling tools and then try to add SIMD + Multicore Rendering.
+- [ ] After cube rendering, think of voxel rendering.

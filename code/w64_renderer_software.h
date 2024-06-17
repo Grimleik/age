@@ -7,11 +7,11 @@
 
 #pragma comment(lib, "winmm.lib")
 
-class W64RendSoftware : public IW64Renderer {
+class W64RendererSoftware : public IW64Renderer {
 
   public:
-    W64RendSoftware();
-    ~W64RendSoftware();
+    W64RendererSoftware();
+    ~W64RendererSoftware();
     bool Init(w64State_t &state) override;
     void Render(renderList_t &renderList) override;
     void Cleanup(const w64State_t& state) override;

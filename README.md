@@ -1,2 +1,2 @@
-# age
+# AGE 
 Another Graphics Engine.
